@@ -13,7 +13,7 @@ classdef sublimeFigure < handle
     % Designed to run in scripts, so may not respond well to manual
     % resizing in GUI, apps etc.
     %
-    % Version: 0.2 (2017-05-23)
+    % Version: 1.1 (2017-08-21)
     % (C) 2017, M. Sich, The University of Sheffield
     % m.sich@sheffield.ac.uk
     
@@ -77,6 +77,16 @@ classdef sublimeFigure < handle
         enableFontControl(1,1) logical                    = true
     end
     
+    properties (SetObservable, AbortSet)
+        % Use AbortSet = true to trigger callback listener only if the
+        % value of the property has changed, so that assigning the same
+        % value twice will only triiger call back on the first instance.
+        
+        % Default units of all physical dimensions. Can be either 'cm' or
+        % 'in'.
+        defUnits(1,:) char {mustBeMember(defUnits,{'cm','in'})} = 'cm'
+    end
+    
     % ====================================================================
    
     properties ( SetAccess = private )
@@ -102,6 +112,7 @@ classdef sublimeFigure < handle
         % rSpan. Empty by default.
         sfPlots = []
         sysDefFontSize(1,1) double
+        propChangeListeners = event.listener.empty
     end
     
     % ====================================================================
@@ -185,8 +196,18 @@ classdef sublimeFigure < handle
                 % All of those impact figure sizing, so run resizeFigure in
                 % each case.
                 if plist(i).SetObservable == true
-                    addlistener( obj, plist(i).Name,...
-                        'PostSet', @obj.resizeFigure);
+                    if string(plist(i).Name) == 'defUnits'
+                        % Only if units are changed call a recalculate
+                        % function instead of resize. Otherwise the actual
+                        % figure size have changed.
+                        % NB: Name property of a meta.class object is char
+                        % array, not a string!
+                        obj.propChangeListeners(end+1) = addlistener(...
+                            obj, plist(i).Name,'PostSet', @obj.changeUnits);
+                    else
+                        obj.propChangeListeners(end+1) = addlistener(...
+                            obj, plist(i).Name,'PostSet', @obj.resizeFigure);                        
+                    end
                 end
             end
         end
@@ -340,12 +361,22 @@ classdef sublimeFigure < handle
             defLbUnits = lb.Units;
             
             % Position the label
-            lb.Units = 'centimeters';
-            obj.sfPlots( axID ).ax.Units = 'centimeters';
-            axPC = obj.sfPlots( axID ).ax.Position;
-            % get the size of the letter from pt. 1 pt = 1/72 in, 1
-            % inch = 2.54 cm....
-            lbHeight = 1/72 * obj.defFontSize * 2.54;
+            switch obj.defUnits
+                case 'cm'
+                    lb.Units = 'centimeters';
+                    obj.sfPlots( axID ).ax.Units = 'centimeters';
+                    axPC = obj.sfPlots( axID ).ax.Position;
+                    % get the size of the letter from pt. 1 pt = 1/72 in, 1
+                    % inch = 2.54 cm....
+                    lbHeight = 1/72 * obj.defFontSize * 2.54;
+                case 'in'
+                    lb.Units = 'inches';
+                    obj.sfPlots( axID ).ax.Units = 'inches';
+                    axPC = obj.sfPlots( axID ).ax.Position;
+                    % get the size of the letter from pt. 1 pt = 1/72 in, 1
+                    % inch = 2.54 cm....
+                    lbHeight = 1/72 * obj.defFontSize;
+            end
             switch location
                 case 'topleft'
                     lb.HorizontalAlignment = 'left';
@@ -379,40 +410,117 @@ classdef sublimeFigure < handle
     
     methods ( Access = private, Hidden = true )
         
+        function obj = changeUnits( obj, varargin )
+            % Change from in to cm and back. The function is triggered
+            % 'post set', so new value of defUnits is the target one.
+            
+            %Disable property change listeners
+            for i = 1 : length(obj.propChangeListeners)
+                obj.propChangeListeners(i).Enabled = false;
+            end
+            switch obj.defUnits
+                case 'cm'
+                    % Switch from in to cm
+                    obj.totalWidth = obj.totalWidth * 2.54;
+                    obj.totalHeight = obj.totalHeight * 2.54;
+                    obj.leftOuterPadding = obj.leftOuterPadding * 2.54;
+                    obj.rightOuterPadding = obj.rightOuterPadding * 2.54;
+                    obj.leftPadding = obj.leftPadding * 2.54;
+                    obj.rightPadding = obj.rightPadding * 2.54;
+                    obj.topOuterPadding = obj.topOuterPadding * 2.54;
+                    obj.bottomOuterPadding = obj.bottomOuterPadding * 2.54;
+                    obj.topPadding = obj.topPadding * 2.54;
+                    obj.bottomPadding = obj.bottomPadding * 2.54;
+                    obj.cBarWidth = obj.cBarWidth * 2.54;
+                    obj.cBarPadding = obj.cBarPadding * 2.54;
+                case 'in'
+                    % Switch from cm to in
+                    obj.totalWidth = obj.totalWidth / 2.54;
+                    obj.totalHeight = obj.totalHeight / 2.54;
+                    obj.leftOuterPadding = obj.leftOuterPadding / 2.54;
+                    obj.rightOuterPadding = obj.rightOuterPadding / 2.54;
+                    obj.leftPadding = obj.leftPadding / 2.54;
+                    obj.rightPadding = obj.rightPadding / 2.54;
+                    obj.topOuterPadding = obj.topOuterPadding / 2.54;
+                    obj.bottomOuterPadding = obj.bottomOuterPadding / 2.54;
+                    obj.topPadding = obj.topPadding / 2.54;
+                    obj.bottomPadding = obj.bottomPadding / 2.54;
+                    obj.cBarWidth = obj.cBarWidth / 2.54;
+                    obj.cBarPadding = obj.cBarPadding / 2.54;
+                otherwise
+                    error( ['Unknown unit type: ', obj.defUnits,...
+                        '. Must be either in or cm.'] );                    
+            end
+            %Enable property change listeners back
+            for i = 1 : length(obj.propChangeListeners)
+                obj.propChangeListeners(i).Enabled = true;
+            end            
+        end
+        
         function obj = resizeFigure( obj, varargin )
             % Resize figure according to the new/updated values
-            
-            % Setting paper sizes
-            obj.fig.PaperUnits = 'centimeters';
-            % PaperPosition for raster images
-            obj.fig.PaperPosition = [0 0 obj.totalWidth obj.totalHeight];
-            % PaperSize is used by full page pdf and PostScript printers
-            obj.fig.PaperSize = [obj.totalWidth obj.totalHeight];
-            obj.fig.PaperPositionMode = 'manual';
-            % Getting same proportion on screen
-            % Sets the units of the root object (screen) to pixels
-            set(0,'units','pixels');
-            % Obtains this pixel information
-            ss.px = get(0,'screensize');
-            % Sets the units of the root object (screen) to cm
-            set(0,'units','centimeters');
-            % Obtains this inch information
-            ss.cm = get(0,'screensize');
-            % Calculates the resolution (pixels per cm)
-            ss.res = ss.px ./ ss.cm;
-            % Resizing the onscreen figure
-            obj.fig.Units = 'pixels';
-            obj.fig.Position(3) = round( obj.totalWidth * ss.res(3) );
-            obj.fig.Position(4) = round( obj.totalHeight * ss.res(4) );
-            obj.fig.Position(1) = round( 0.5 * ( ss.px(3)-obj.fig.Position(3)));
-            obj.fig.Position(2) = round( 0.5 * ( ss.px(4)-obj.fig.Position(4)));
+            switch obj.defUnits
+                case 'cm'
+                    % Setting paper sizes
+                    obj.fig.PaperUnits = 'centimeters';
+                    % PaperPosition for raster images
+                    obj.fig.PaperPosition = [0 0 obj.totalWidth obj.totalHeight];
+                    % PaperSize is used by full page pdf and PostScript printers
+                    obj.fig.PaperSize = [obj.totalWidth obj.totalHeight];
+                    obj.fig.PaperPositionMode = 'manual';
+                    % Getting same proportion on screen
+                    % Sets the units of the root object (screen) to pixels
+                    set(0,'units','pixels');
+                    % Obtains this pixel information
+                    ss.px = get(0,'screensize');
+                    % Sets the units of the root object (screen) to cm
+                    set(0,'units','centimeters');
+                    % Obtains this inch information
+                    ss.cm = get(0,'screensize');
+                    % Calculates the resolution (pixels per cm)
+                    ss.res = ss.px ./ ss.cm;
+                    % Resizing the onscreen figure
+                    obj.fig.Units = 'pixels';
+                    obj.fig.Position(3) = round( obj.totalWidth * ss.res(3) );
+                    obj.fig.Position(4) = round( obj.totalHeight * ss.res(4) );
+                    obj.fig.Position(1) = round( 0.5 * ( ss.px(3)-obj.fig.Position(3)));
+                    obj.fig.Position(2) = round( 0.5 * ( ss.px(4)-obj.fig.Position(4)));
+                case 'in'
+                    % Setting paper sizes
+                    obj.fig.PaperUnits = 'inches';
+                    % PaperPosition for raster images
+                    obj.fig.PaperPosition = [0 0 obj.totalWidth obj.totalHeight];
+                    % PaperSize is used by full page pdf and PostScript printers
+                    obj.fig.PaperSize = [obj.totalWidth obj.totalHeight];
+                    obj.fig.PaperPositionMode = 'manual';
+                    % Getting same proportion on screen
+                    % Sets the units of the root object (screen) to pixels
+                    set(0,'units','pixels');
+                    % Obtains this pixel information
+                    ss.px = get(0,'screensize');
+                    % Sets the units of the root object (screen) to cm
+                    set(0,'units','inches');
+                    % Obtains this inch information
+                    ss.in = get(0,'screensize');
+                    % Calculates the resolution (pixels per cm)
+                    ss.res = ss.px ./ ss.in;
+                    % Resizing the onscreen figure
+                    obj.fig.Units = 'pixels';
+                    obj.fig.Position(3) = round( obj.totalWidth * ss.res(3) );
+                    obj.fig.Position(4) = round( obj.totalHeight * ss.res(4) );
+                    obj.fig.Position(1) = round( 0.5 * ( ss.px(3)-obj.fig.Position(3)));
+                    obj.fig.Position(2) = round( 0.5 * ( ss.px(4)-obj.fig.Position(4)));
+                otherwise
+                    error( ['Unknown unit type: ', obj.defUnits,...
+                        '. Must be either in or cm.'] );
+            end
             
             % redo relative sizes
             obj.setRelativeSizes;
             % resize all existing subplots
             if ~isempty( obj.sfPlots )
                 for i = 1 : length( obj.sfPlots )
-                    resizePlot( i );
+                    obj.resizePlot( i );
                 end
             end
         end
