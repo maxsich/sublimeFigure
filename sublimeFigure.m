@@ -8,13 +8,11 @@ classdef sublimeFigure < handle
     % Default properties create a square figure with one axis (plot) of the
     % width suitable for one-column-wide figure in an APS publication.
     %
-    % 
-    %
-    % Designed to run in scripts, so may not respond well to manual
+    % Designed to run in scripts, not tested with manual
     % resizing in GUI, apps etc.
     %
-    % Version: 1.1 (2017-08-21)
-    % (C) 2017, M. Sich, The University of Sheffield
+    % Version: 1.2 (2018-01-03)
+    % (C) 2018, M. Sich, The University of Sheffield
     % m.sich@sheffield.ac.uk
     
     properties (SetObservable)
@@ -71,16 +69,12 @@ classdef sublimeFigure < handle
         % Colour-bar padding from the edge of the plot (default 0.1 cm)
         cBarPadding(1,1) double {mustBeNonnegative}       = 0.1
         
-        % If true temporarily changes system font size as per defFontSize.
-        % Do not use if you have multiple figure windows (not subplots) 
-        % and want to have different font size in each of those. 
-        enableFontControl(1,1) logical                    = true
     end
     
     properties (SetObservable, AbortSet)
         % Use AbortSet = true to trigger callback listener only if the
         % value of the property has changed, so that assigning the same
-        % value twice will only triiger call back on the first instance.
+        % value twice will only trigger call back on the first instance.
         
         % Default units of all physical dimensions. Can be either 'cm' or
         % 'in'.
@@ -111,8 +105,7 @@ classdef sublimeFigure < handle
         % structure of subplots' (axis) handles and props: ax, col, row, cSpan,
         % rSpan. Empty by default.
         sfPlots = []
-        sysDefFontSize(1,1) double
-        propChangeListeners = event.listener.empty
+        propChangeListeners = event.listener.empty % array of handles to listeners
     end
     
     % ====================================================================
@@ -165,7 +158,7 @@ classdef sublimeFigure < handle
                 	% do nothing
                 otherwise
                     % Just doublechecking
-                	error( 'sublimeFigure screams: Unknown preset "%s"!', preset);
+                	error( 'sublimeFigure: Unknown preset "%s"!', preset);
             end
             
             % Set sizes
@@ -176,10 +169,9 @@ classdef sublimeFigure < handle
             
             % Need to change default settings since whenever something is
             % plotted in axis, it resets font size...
-            if obj.enableFontControl
-                obj.sysDefFontSize = get( groot, 'DefaultAxesFontSize' );
-                set( groot, 'DefaultAxesFontSize', obj.defFontSize);
-            end
+            set( obj.fig, 'DefaultAxesFontSize', obj.defFontSize);
+            set( obj.fig, 'DefaultAxesLabelFontSizeMultiplier', 1 );
+            set( obj.fig, 'DefaultAxesTitleFontSizeMultiplier', 1 );
             
             % Update figure
             obj.resizeFigure;
@@ -214,13 +206,8 @@ classdef sublimeFigure < handle
         
         % ================================================================
         
-        function delete(obj)
+        function delete(~)
             % Destructor
-            
-            % Reset default font settings 
-            if obj.enableFontControl
-                set( groot, 'DefaultAxesFontSize', obj.sysDefFontSize);
-            end
         end
         
         % ================================================================
